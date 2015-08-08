@@ -70,6 +70,8 @@ element.on('click', function() {
 });
 ```
 
+In reality, we would actually pass query parameters as the last argument in `Stores#update`, and then the corresponding query service (say, `FollowService`, would pass a query like `{ target_user_id: myId, user_id: otherId }`, which would create a `follow` link between two users in our database, and then the server would spit back the updated set of followers. This would then be propagated to the components/views). This is a contrived example because you wouldn't actually be updating your own followers (someone else would follow you, and that would create the link).
+
 When that button is clicked, the changes will propagate only to:
 
 1. The controller/view that shows my entire profile, and
