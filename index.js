@@ -270,15 +270,15 @@ var Stores = (function() {
   });
 }());
 
-// controller 2 (we only care about my followers)
+// controller 2 (we only care about my people I follow -- "following")
 (function() {
   var $scope = {};
   
   var id = 12345;
   
-  Stores.get(Stores.types.followers, id, function(followers) {
-    $scope.followers = followers;
-    console.log('controller 2 | $scope.followers', $scope.followers);
+  Stores.get(Stores.types.following, id, function(following) {
+    $scope.following = following;
+    console.log('controller 2 | $scope.following', $scope.following);
   });
 }());
 
@@ -317,16 +317,16 @@ var Stores = (function() {
  *
  *  This represents a button element.
  *
- *  Here, we'll update my followers count.
+ *  Here, we'll update my following count.
  */
 (function() {
   var id = 12345;
   
   /**
    *  Here we use a timeout to simulate, say,
-   *  a button click that is meant to update the followers.
+   *  a button click that is meant to update the following.
    */
   setTimeout(function() {
-    Stores.update(Stores.types.followers, id, 90000000000);
+    Stores.update(Stores.types.following, id, 90000000000);
   }, 2000);
 }());

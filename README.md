@@ -53,34 +53,34 @@ Stores.get(Stores.types.user, myId, function(user) {
 });
 ```
 
-Then we might have a view that shows *only* my follower count:
+Then we might have a view that shows *only* my following count (the number of people that I follow):
 
 ```javascript
-Stores.get(Stores.types.followers, myId, function(followers) {
-  $scope.followers = followers;
+Stores.get(Stores.types.following, myId, function(following) {
+  $scope.following = following;
 });
 ```
 
-And finally, a directive (a button) that updates my follower count:
+And finally, a directive (a button) that updates my following count (the number of people that I follow):
 
 ```javascript
-// Here, I'll pretend I'm popular and set my follower count to 90,000,000,000
+// Here, I'll pretend I know a lot of people. 90,000,000,000 to be exact.
 element.on('click', function() {
-  Stores.update(Stores.types.followers, myId, 90000000000);
+  Stores.update(Stores.types.following, myId, 90000000000);
 });
 ```
 
-In reality, we would actually pass query parameters as the last argument in `Stores#update`, and then the corresponding query service (say, `FollowService`, would pass a query like `{ target_user_id: myId, user_id: otherId }`, which would create a `follow` link between two users in our database, and then the server would spit back the updated set of followers. This would then be propagated to the components/views). This is a contrived example because you wouldn't actually be updating your own followers (someone else would follow you, and that would create the link).
+In reality, we would actually pass query parameters as the last argument in `Stores#update`, and then the corresponding query service (say, `FollowService`, would pass a query like `{ target_user_id: otherId, user_id: myId }`, which would create a `follow` link between two users in our database, and then the server would spit back the updated set. This would then be propagated to the components/views).
 
 When that button is clicked, the changes will propagate only to:
 
 1. The controller/view that shows my entire profile, and
 
-2. The controller/view that shows *only* my follower count
+2. The controller/view that shows *only* my following count
 
 # Run it yourself
 
-The example will show various user data belonging to me and to another user, and then will simulate an asynchronous button click by wrapping `Store#update` in a `setTimeout` function that updates my followers count.
+The example will show various user data belonging to me and to another user, and then will simulate an asynchronous button click by wrapping `Store#update` in a `setTimeout` function that updates my following count.
 
 Either:
 
