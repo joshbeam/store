@@ -291,12 +291,12 @@ var Stores = (function() {
   
   Stores.get(Stores.types.user, myId, function(user) {
     $scope.me = user;
-    console.log('controller 2 | $scope.me', $scope.me);
+    console.log('controller 3 | $scope.me', $scope.me);
   });
   
   Stores.get(Stores.types.user, otherUserId, function(user) {
     $scope.otherUser = user;
-    console.log('controller 2 | $scope.otherUser', $scope.otherUser);
+    console.log('controller 3 | $scope.otherUser', $scope.otherUser);
   });
 }());
 

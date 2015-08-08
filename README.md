@@ -88,6 +88,8 @@ Either:
 
 2. `git clone https://github.com/joshbeam/store; node index.js` to see the output in your terminal
 
+After about 2 seconds (which accounts for the asynchronous button click), you'll see that both `controller 2` and `controller 3` were updated based on the changes to the underlying data.
+
 <hr>
 
 The MIT License (MIT)
