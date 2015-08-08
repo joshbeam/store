@@ -6,8 +6,9 @@ The purpose of this is to provide a global "bucket" of user data
 (which we call a Store) to the application. The Store
 has several responsibilities:
 
-1) Interact with a service layer that queries our server,
-2) Broadcast updates with segmented data to components which
+1. Interact with a service layer that queries our server,
+
+2. Broadcast updates with segmented data to components which
 require those segments of data.
 
 The data can exist however it needs to on the server. It is
@@ -20,9 +21,10 @@ The Store acts as sort of an intermediary between components and
 the server. In other words, components never needs to query and 
 subsequently compose data from the server themselves; they only
 need to ask the store either for:
-*
-1) The entire set of composed user data,
-2) Or, individual segments of that data (for example,
+
+1. The entire set of composed user data,
+
+2. Or, individual segments of that data (for example,
 a user's wishlist or followers count).
 
 For example, if we have a view that shows a user's profile,
@@ -37,6 +39,42 @@ the store for *only* the follower count when it was changed.
 Instead, the follower count "segment of data" will be pushed
 to the profile component/view without needing to refresh the
 entire profile data set.
+
+# Example
+
+In a controller, we may have the following code that wants the entire set of user data from the Store (i.e., the user's "profile"). This entire user profile would be shown in, say, a profile view:
+
+```javascript
+// For example, my Auth0 user profile ID
+var myId = auth.profile.user_id;
+
+Stores.get(Stores.types.user, myId, function(user) {
+  $scope.me = user;
+});
+```
+
+Then we might have a view that shows *only* my follower count:
+
+```javascript
+Stores.get(Stores.types.followers, myId, function(followers) {
+  $scope.followers = followers;
+});
+```
+
+And finally, a directive (a button) that updates my follower count:
+
+```javascript
+// Here, I'll pretend I'm popular and set my follower count to 90,000,000,000
+element.on('click', function() {
+  Stores.update(Stores.types.followers, myId, 90000000000);
+});
+```
+
+When that button is clicked, the changes will propagate only to:
+
+1. The controller/view that shows my entire profile, and
+
+2. The controller/view that shows *only* my follower count
 
 <hr>
 
