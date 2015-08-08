@@ -78,7 +78,7 @@ When that button is clicked, the changes will propagate only to:
 
 # Run it yourself
 
-The example will show various user data belonging to me and to another user, and then will simulate a button click by wrapping `Store#update` in a `setTimeout` function to simulate an asynchronous button click that updates my followers count.
+The example will show various user data belonging to me and to another user, and then will simulate an asynchronous button click by wrapping `Store#update` in a `setTimeout` function that updates my followers count.
 
 Either:
 
