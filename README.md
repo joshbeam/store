@@ -76,6 +76,16 @@ When that button is clicked, the changes will propagate only to:
 
 2. The controller/view that shows *only* my follower count
 
+# Run it yourself
+
+The example will show various user data belonging to me and to another user, and then will simulate a button click by wrapping `Store#update` in a `setTimeout` function to simulate an asynchronous button click that updates my followers count.
+
+Either:
+
+1. Copy and paste `./index.js` in <a href="http://www.jsbin.com">JS Bin</a> and open your developer console to see the results, or
+
+2. `git clone https://github.com/joshbeam/store; node index.js` to see the output in your terminal
+
 <hr>
 
 The MIT License (MIT)
