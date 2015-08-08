@@ -148,7 +148,7 @@ var Stores = (function() {
 
       // only broadcast if the data is actually fresh
       console.log('update occured =>');
-      broadcast.call(store, type);
+      broadcast.call(store, type, true);
     }
   };
   
@@ -187,14 +187,40 @@ var Stores = (function() {
    *  TODO: Be able to only send segments of data if the 
    *  component requires the entire user Store.
    */
-  function broadcast(type) {  
-    this.listeners.forEach(function(l) {
+  function broadcast(type, isUpdate) {  
+    /**
+     *  Here, if there's an update, we want to
+     *  broadcast the update to all components
+     *  that 1) want the entire user data set, or
+     *  2) want that specific type of data.
+     *
+     *  This is because we don't want to invoke
+     *  *all* listeners, because some of the
+     *  components to which those listeners are bound
+     *  won't require this specific type of data.
+     */
+    if(isUpdate === true) {
+      this.listeners.forEach(function(l) {
+        if(l.type === Stores.types.user || l.type === type) {
+          l.callback(this.data[l.type] || this.data);
+        }
+      }.bind(this));
+      
+      return;
+    }
+    
+    /**
+     *  Otherwise, we'll only invoke
+     *  listeners for components that care only
+     *  about this specific type of data.
+     */
+    return this.listeners.forEach(function(l) {
       if(l.type === type) {
         l.callback(this.data[type] || this.data);
       }
     }.bind(this));
   }
-  
+ 
   /**
    *  Here is where we add our ListenerObjects
    *  to the user's Store. The ListenerObjects can
