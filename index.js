@@ -1,231 +1,224 @@
-/**
- *  The purpose of this is to provide a global "bucket" of user data
- *  (which we call a Store) to the application. The Store
- *  has several responsibilities:
- *
- *  1) Interact with a service layer that queries our server,
- *  2) Broadcast updates with segmented data to components which
- *     require those segments of data.
- *
- *  The data can exist however it needs to on the server. It is
- *  composed into a specifically formatted user object, so components
- *  that need the data do not need to know how the data exists on the
- *  server. The components only need to know how the data exists in the
- *  Store.
- *
- *  The Store acts as sort of an intermediary between components and
- *  the server. In other words, components never needs to query and 
- *  subsequently compose data from the server themselves; they only
- *  need to ask the store either for:
- *
- *  1) The entire set of composed user data,
- *  2) Or, individual segments of that data (for example,
- *     a user's wishlist or followers count).
- *
- *  For example, if we have a view that shows a user's profile,
- *  the component may ask for the entire user profile.
- *  However, if we have another view that shows only followers and
- *  allows you to add a follower, that view will only receive
- *  the segment of data (the follower count) from the Store. But when
- *  that follower view updates that data, the updates in the data
- *  will *still* propagate to the view that needs the entire user
- *  profile. In other words, the profile view own't have to ask
- *  the store for *only* the follower count when it was changed.
- *  Instead, the follower count "segment of data" will be pushed
- *  to the profile component/view without needing to refresh the
- *  entire profile data set.
- */
+'use strict';
 
-/**
- *  Mock HTTP backend
- */
-var composeUserDataFromServer = function(id) {
-  return {
-    then: function(callback) {
-      return callback({
-        id: id,
-        wishlist: [
-          {
-            brand: 'Armani',
-            type: 'Handbag',
-            color: 'Brown'
-          }
-        ],
-        followers: +(''+(Math.random() * 1000)).split('.')[0],
-        following: +(''+(Math.random() * 1000)).split('.')[0]
-      });
-    }
-  };
-};
-
-//////////////////////////////////
-
-var Stores = (function() {
+module.exports = function(FollowService, UserService, WishService, $timeout, $q, store) {
   /**
-   *  This is a map that stores each user's data.
-   *  It may look like this:
-   *  {
-   *    1234: {
-   *      data: [DataFromServer],
-   *      listeners: [ListenerObjects]
-   *    }
-   *  }
-   *
-   *  A ListenerObject may look like this:
-   *  { type: 'wishlist', callback: Function }
-   *
-   *  This way, the listener corresponds to a certain
-   *  field of DataFromServer, and only cares about that
-   *  specific data.
+   *  These types correspond to key names in the
+   *  data we expect to get from the server.
    */
+  var _types = {
+    user: 'user',
+    wishlist: 'wishlist',
+    followers: 'followers',
+    following: 'following'
+  };
+  var _services = {};
   var _stores = {};
+  var _newStoreCompositionPromise;
+
+  _services[_types.user] = UserService;
+  _services[_types.wishlist] = WishService;
+  _services[_types.followers] = _services[_types.following] = FollowService;
   
   var Store = function(type, id, listener) {
-    /**
-     *  If we call Stores#get, we must supply a listener,
-     *  otherwise there's no reason for it to exists
-     *  because it won't update any components.
-     */
-    if(typeof listener === 'undefined') {
-      throw new SyntaxError('A new store requires a listener!');
-    }
-    
     _stores[id] = this;
     
     this.id = id;
     this.listeners = [];
 
-    /**
-     *  Asynchronous call to the server that returns
-     *  and composes *all* user data into one whole
-     *  object. This way, when components (like controllers)
-     *  interact with a Store, the component doesn't necessarily
-     *  need to care what the data looks like on the server.
-     *  The component simply expects an entire set of user data.
-     */
-    composeUserDataFromServer(this.id).then(function(data) {
-      this.data = data;
-      
-      /**
-       *  Then we'll add the ListenerObjects
-       */
-      patchToStore.call(this, type, listener);
+    _newStoreCompositionPromise = composeUser(id, this).then(function(result) {
+      this.data = result;
+
+      if(typeof listener !== 'undefined') {
+        patchToStore.call(this, type, listener);
+        broadcast.call(this, type);
+      }
+
+      setLocalStorage(this);
     }.bind(this));
-    
-  };
-  
-  return {
+
     /**
-     *  These types correspond to key names in the
-     *  data we expect to get from the server.
+     *  Immediately resolve this promise in case we call Stores#get
+     *  on a Store that doesn't exist yet.
+     *
+     *  REVIEW: Should we be resolving a promise here that doesn't
+     *  return the results of the promise, and instead just returns
+     *  side effects?
      */
-    types: {
-      user: 'user',
-      wishlist: 'wishlist',
-      followers: 'followers',
-      following: 'following'
-    },
-    get: get,
-    update: function(type, id, val) {
-      var store = get(type, id);
-      
-      /**
-       *  This would actually query the store's
-       *  corresponding service function that would
-       *  make an async update call to the server
-       *  and (hopefully) return fresh data. This
-       *  data would then be diffed against the current
-       *  data in the store, and only update the data
-       *  and broadcast the update to the components
-       *  if the data is indeed fresh.
-       *
-       *  A caveat is that if the component actually
-       *  requests the entire user Store, then only
-       *  the piece of data that was updated in the Store
-       *  should still be pushed to that component.
-       */
-      store.data[type] = val;
-
-      // only broadcast if the data is actually fresh
-      console.log('update occured =>');
-      broadcast.call(store, type, true);
-    }
+    return _newStoreCompositionPromise.then(function() {
+      return this;
+    }.bind(this));
   };
   
-  function get(type, id, listener) {
-    var existingStore;
+  /**
+   *  These are the actual factory methods that
+   *  we will expose to the user of the factory.
+   */
+  return {
+    get: get,
+    types: _types,
+    update: update
+  };
 
-    if(id in _stores) {
-      existingStore = _stores[id];
+  /////////////////////////////////////////////////////////////////////////
 
+  /**
+   *  This will propagate the data to the components.
+   *
+   *  @param type {Stores::types}
+   *  @param isUpdate {Boolean} whether or not we're broadcasting
+   *                            the original data, or an update.
+   */
+  function broadcast(type, isUpdate) {
+    /**
+     *  Here, if there's an update, we're going to
+     *  run through *all* Stores and invoke listeners
+     *  of that specific type.
+     */
+    if(isUpdate === true) {
+      // REVIEW: invoke listeners of type in ALL stores
+
+      for(var id in _stores) {
+        _stores[id].listeners.forEach(function(l) {
+          if(l.type === _types.user || l.type === type) {
+            // REVIEW: change l.type below to type
+            l.callback(_stores[id].data[l.type] || _stores[id].data);
+          }
+        });        
+      }
+    } else {
+      /**
+       *  Otherwise, we'll only invoke Stores'
+       *  listeners for components that care only
+       *  about this specific type of data.
+       */
+      this.listeners.forEach(function(l) {
+        if(l.type === type) {
+          try {
+            l.callback(this.data[type] || this.data);
+          } catch(e) {
+            console.warn('Something is wrong with your data!', e);
+          }
+        }
+      }.bind(this));
+    }
+  }
+
+  /**
+   *  Checks if the Store exists in local storage.
+   *  If so, it'll broadcast that potentially stale data
+   *  while the fresh data loads in the background.
+   *
+   *  @context {Store}
+   *  @param type {Stores::types}
+   *  @param nakedListenerFn {Function}
+   */
+  function broadcastCachedData(type, nakedListenerFn) {
+    var data;
+
+    if(!!this && typeof nakedListenerFn !== 'undefined') {
+      if('data' in this) {
+        if(type === 'user') {
+          data = this.data;
+        } else {
+          data = this.data[type];
+        }
+
+        try {
+          return nakedListenerFn(data);
+        } catch (e) {
+          console.warn('Something is wrong with your data!', e);
+        }
+      }
+    }
+  }
+
+  /**
+   *  Composes our entire user object that we can query
+   *  through a canonical set of promises/resolutions.
+   *
+   *  REVIEW: This should be a "graph composition", it feels
+   *  messy to have this written out canonically.
+   */
+  function composeUser(id, store) {
+    var composedData = {};
+    var deferred = $q.defer();
+
+    // query the appropriate services to compose our data
+    deferred.resolve(composedData);
+
+    return deferred.promise;
+  }
+
+  /**
+   *  Returns an existing store.
+   *
+   *  @param type {Stores::types}
+   *  @param id {String}
+   *  @param listener {Function}
+   *  @return {Store}
+   */
+  function existingStore(type, id, listener) {
+    var existingStore = _stores[id];
+
+    /**
+     *  Other listeners may have been bound to the store before all the
+     *  data has finished being composed. Therefore, we need to wait
+     *  for the data to be composed first (new Store composes the data).
+     */
+    return _newStoreCompositionPromise.then(function() {
       /**
        *  Store#update can call Store#get without
        *  passing in a listener, so we only need to
        *  patch new listeners to the store if we're
        *  specifically calling Store#get *from a component*.
-       *  
-       *  If we're calling Store#update, we're expecting
-       *  that the store does already in fact exists,
-       *  and that it does in fact already have listeners
-       *  attached to it.
        */
       if(typeof listener !== 'undefined') {
         patchToStore.call(existingStore, type, listener);
-      }
-    }
 
-    /**
-     *  Return a singleton store. That is, if the store already
-     *  exists, then we'll return that one. Otherwise, we'll
-     *  create a new store of user data.
-     */
-    return existingStore || new Store(type, id, listener);    
-  }
-  
-  /**
-   *  This will propagate the data to the components.
-   *  TODO: Be able to only send segments of data if the 
-   *  component requires the entire user Store.
-   */
-  function broadcast(type, isUpdate) {  
-    /**
-     *  Here, if there's an update, we want to
-     *  broadcast the update to all components
-     *  that 1) want the entire user data set, or
-     *  2) want that specific type of data.
-     *
-     *  This is because we don't want to invoke
-     *  *all* listeners, because some of the
-     *  components to which those listeners are bound
-     *  won't require this specific type of data.
-     */
-    if(isUpdate === true) {
-      this.listeners.forEach(function(l) {
-        if(l.type === Stores.types.user || l.type === type) {
-          l.callback(this.data[l.type] || this.data);
-        }
-      }.bind(this));
-      
-      return;
-    }
-    
-    /**
-     *  Otherwise, we'll only invoke
-     *  listeners for components that care only
-     *  about this specific type of data.
-     */
-    return this.listeners.forEach(function(l) {
-      if(l.type === type) {
-        l.callback(this.data[type] || this.data);
+        broadcast.call(existingStore, type);
       }
-    }.bind(this));
+
+      return existingStore;
+    });
   }
- 
+
+  /**
+   *  Returns a singleton Store. If the Store already exists,
+   *  then it waits for the data to be composed in the singleton
+   *  before returning the existing Store.
+   *
+   *  @param type {Stores::types}
+   *  @param id {String} for example, auth.profile.user_id (to whomever the Store belongs)
+   *  @param listener {Function}
+   */
+  function get(type, id, listener) {
+    // broadcast user data in local storage, if it exists
+    broadcastCachedData.call(getLocalStorage(id), type, listener);
+
+    // return the existing store, if it exists
+    if(id in _stores) {
+      return existingStore(type, id, listener);
+    } else {
+      return new Store(type, id, listener);
+    }
+  }
+
+  /**
+   *  @param id {String} for example, auth0 user_id
+   *  @return {Store}
+   */
+  function getLocalStorage(id) {
+    return store.getNamespacedStore('myApplicationStore').get(id);
+  }
+
   /**
    *  Here is where we add our ListenerObjects
    *  to the user's Store. The ListenerObjects can
    *  care either only about a specific segment of the
    *  user's data, or the entire user's Store.
+   *
+   *  @param type {Stores::types}
+   *  @param listener {Function}
    */
   function patchToStore(type, listener) {
     var ListenerObject = function(_type, _listener) {
@@ -251,82 +244,79 @@ var Stores = (function() {
     
     // push the new ListenerObject
     this.listeners.push(new ListenerObject(type, listener));
-    
-    // go ahead and broadcast the data to the components
-    broadcast.call(this, type);
   }
-}());
 
-
-// controller 1 (we only want my wishes)
-(function() {
-  var $scope = {};
-  
-  var id = 12345;
-  
-  Stores.get(Stores.types.wishlist, id, function(wishes) {
-    $scope.wishes = wishes;
-    console.log('controller 1 | $scope.wishes', $scope.wishes);
-  });
-}());
-
-// controller 2 (we only care about my people I follow -- "following")
-(function() {
-  var $scope = {};
-  
-  var id = 12345;
-  
-  Stores.get(Stores.types.following, id, function(following) {
-    $scope.following = following;
-    console.log('controller 2 | $scope.following', $scope.following);
-  });
-}());
-
-// controller 3 (2 users, and we want the whole sets of user data)
-(function() {
-  var $scope = {};
-  
-  var myId = 12345;
-  var otherUserId = 54321;
-  
-  Stores.get(Stores.types.user, myId, function(user) {
-    $scope.me = user;
-    console.log('controller 3 | $scope.me', $scope.me);
-  });
-  
-  Stores.get(Stores.types.user, otherUserId, function(user) {
-    $scope.otherUser = user;
-    console.log('controller 3 | $scope.otherUser', $scope.otherUser);
-  });
-}());
-
-// controller 4 (we want the other user's following count)
-(function() {
-  var $scope = {};
-  
-  var otherUserId = 54321;
-  
-  Stores.get(Stores.types.following, otherUserId, function(followingCount) {
-    $scope.otherUserFollowingCount = followingCount;
-    console.log('controller 4 | $scope.otherUserFollowingCount', $scope.otherUserFollowingCount);
-  });
-}());
-
-/**
- *  Directive 1
- *
- *  This represents a button element.
- *
- *  Here, we'll update my following count.
- */
-(function() {
-  var id = 12345;
-  
   /**
-   *  Here we use a timeout to simulate, say,
-   *  a button click that is meant to update the following.
+   *  Sets a namespaced storage item.
+   *  In this storage, each item will be a Store object,
+   *  with the key being the ID to which the Store corresponds.
+   *
+   *  @param userStore {Store}
    */
-  setTimeout(function() {
-    Stores.update(Stores.types.following, id, 90000000000);
-  }, 2000);
-}());
+  function setLocalStorage(userStore) {
+    var storage = store.getNamespacedStore('myApplicationStore');
+
+    storage.set(userStore.id, userStore);
+  }
+
+  /**
+   *  Queries the appropriate service to update the Store.
+   *
+   *  If there is an additional target store that needs to be updated,
+   *  this method will take care of that as well.
+   *
+   *  @param type {Stores::types}
+   *  @param id {String}
+   *  @param data {PlainObject}
+   *  @param callback {Function} an optional one-off callback
+   */
+
+   // REVIEW: Make DRYer
+  function update(type, userId, data, callback) {
+    var method = data.method;
+    var query = data.query;
+    var target = data.foreignUserId;
+
+    get(type, userId).then(function(s) {
+      _services[type][method](query).then(function(result) {
+
+        if(type === _types.user) {
+          // just push data that changed (we get this from the return value of UserService)
+          for(var key in result) {
+            // don't need any $-prefixed keys (optimally this should happen at query layer)
+            if(key.indexOf('$') < 0) {
+              this.data[key] = result[key];
+            }
+          }
+        } else {
+          this.data[type] = result;
+        }
+
+        /**
+         *  This is useful in the case where I initially land on someone else's
+         *  profile view, and I click the "follow" button. I need to see *that*
+         *  person's "followers" update.
+         */
+        if(target) {
+          // REVIEW: this is an extremely intensive task, and we might not need the entirely
+          // composed foreign user all over again... just one segment of that data
+          // Maybe just update local data and use a switch ("if follower, update following", etc.)
+          return composeUser(target).then(function(result) {
+            get(_types.user, target).then(function(foreignStore) {
+              foreignStore.data = result;
+
+              broadcast(type, true);
+              setLocalStorage(s);
+              setLocalStorage(foreignStore);
+              if(typeof callback !== 'undefined') callback();
+            });
+          });
+        } else {
+          broadcast(type, true)
+          setLocalStorage(this);
+          if(typeof callback !== 'undefined') callback();
+        }
+      }.bind(s));
+    });
+  }
+};
